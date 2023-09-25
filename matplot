@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+
+from __future__ import print_function
+
+import argparse
+import sys
+import pickle
+
+from math import *
+from random import *
+
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from matplotlib.figure import Figure
+
+import numpy as np
+
+from calca_utils import *
+
+def limit(limitstr):
+    return [ float(v.strip()) for v in limitstr.strip().strip(')(').split(',') ]
+
+def get_args():
+    parser = argparse.ArgumentParser(description='Call into matplotlib.')
+    parser.add_argument(
+        'method',
+        help='The method of axes to call (i.e. the type of plot).'
+    )
+    parser.add_argument(
+        '--no-op',
+        action='store_true'
+    )
+    parser.add_argument(
+        '--set_title',
+        metavar='TITLE'
+        )
+    parser.add_argument(
+        '--set_xlabel',
+        metavar='XLABEL'
+        )
+    parser.add_argument(
+        '--set_ylabel',
+        metavar='XLABEL'
+        )
+    parser.add_argument(
+        '--set_xlim',
+        metavar='(LEFT, RIGHT)',
+        type=limit
+    )
+    parser.add_argument(
+        '--set_ylim',
+        metavar='(BOTTOM, TOP)',
+        type=limit
+    )
+    parser.add_argument(
+        '--grid',
+        action='store_true'
+    )
+    parser.add_argument(
+        '-o', '--output',
+        type=argparse.FileType('wb'),
+        nargs='?',
+        metavar='OUTFILE',
+        default=sys.stdout.buffer)
+    parser.add_argument(
+        '-i', '--input',
+        type=argparse.FileType('r'),
+        nargs='?',
+        metavar='INFILE',
+        default=sys.stdin)
+    parser.add_argument(
+        '--dpi',
+        type=int,
+        default=150)
+    parser.add_argument(
+        '--save',
+        type=argparse.FileType('wb'),
+        metavar='SAVEFILE',
+        help='Instead of writing ouptut to OUTFILE, write the details of the '
+        'plot to SAVEFILE.  See Also: --load'
+    )
+    parser.add_argument(
+        '--load',
+        type=argparse.FileType('rb'),
+        action='append',
+        metavar='LOADFILE',
+        help='Load a saved plot from LOADFILE, and display it in addition to '
+        'the current plot.  See Also: --save'
+    )
+    parser.add_argument(
+        'extraargs',
+        nargs=argparse.REMAINDER,
+        help='arguments passed on to matplotlib.<method>() unmodified.'
+    )
+    return parser.parse_args()
+
+def v2num(v):
+    if v in [',', '.']:
+        return v
+    if ',' in v:
+        return [ v2num(subv) for subv in v.split(',') ]
+    elif set(v) <= set('0123456789'):
+        return int(v)
+    elif set(v) <= set('.0123456789'):
+        return float(v)
+    else:
+        return v
+
+def get_extraargs(remainder):
+    outdi = {}
+    for arg in remainder:
+        if not arg:
+            continue
+        k, _, v = arg.partition('=')
+        outdi[k] = v2num(v)
+    return outdi
+
+def main():
+    args = get_args()
+    if not args.no_op:
+        data = seq_eval(args.input)
+        try:
+            data = zip(*data)
+        except TypeError:
+            pass
+    if args.save:
+        savecontent = (
+            args.method, 
+            tuple(data), 
+            get_extraargs(args.extraargs)
+        )
+        pickle.dump(savecontent, args.save, protocol=-1)
+        return 0
+    fig = Figure()
+    canvas = FigureCanvas(fig)
+    ax = fig.add_subplot(111)
+    if args.set_title:
+        ax.set_title(args.set_title)
+    if args.set_xlabel:
+        ax.set_xlabel(args.set_xlabel)
+    if args.set_ylabel:
+        ax.set_ylabel(args.set_ylabel)
+    if args.set_xlim:
+        ax.set_xlim(args.set_xlim)
+    if args.set_ylim:
+        ax.set_ylim(args.set_ylim)
+    if args.grid:
+        ax.grid()
+    if not args.no_op:
+        ax.__getattribute__(args.method)(*data, **get_extraargs(args.extraargs))
+    if args.load:
+        for loadfile in args.load:
+            method, data, extraargs = pickle.load(loadfile)
+            ax.__getattribute__(method)(*data, **extraargs)
+    canvas.print_figure(args.output, dpi=args.dpi)
+
+if __name__ == '__main__':
+    sys.exit(main())

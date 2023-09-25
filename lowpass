@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+from __future__ import print_function
+from __future__ import division
+from __future__ import unicode_literals
+
+import sys
+from math import *
+from random import *
+import numpy
+import argparse
+import collections
+
+from calca_utils import *
+
+def get_args():
+    parser = argparse.ArgumentParser(
+        description='Apply a function to each line of input'
+    )
+    parser.add_argument(
+        '--passes',
+        type=int,
+        metavar='M',
+        default=4,
+        help='Number of unweighted moving average filters used to '
+        'approximate the gaussian.  Higher is slower and more memory '
+        'intensive, but more accurate.'
+    )
+    parser.add_argument(
+        'sigma',
+        type=float,
+        metavar='σ',
+        help='Standard deviation of the gaussian kernel in samples.'
+    )
+    args = parser.parse_args()
+    return args
+
+def sizes2sigma(sizes):
+    return sqrt((sum([ x ** 2 for x in sizes ]) - len(sizes)) / 12)
+
+def get_ma_sizes(sigma, m):
+    lhs = 12 * sigma**2 + m
+    base_n = sqrt(lhs / m)
+    n_int = round(base_n)
+    n_remain = base_n % 1
+    best_size = None
+    best_var_delta = 100000
+    for i in range(m + 1):
+        candidate_size = [n_int] * i + [n_int + 1] * (m - i)
+        candidate_var = sum([ x ** 2 for x in candidate_size ])
+        if abs(lhs - candidate_var) < best_var_delta:
+            best_var_delta = abs(lhs - candidate_var)
+            best_size = candidate_size
+    return best_size
+
+def iter2mov_sum(iterable, size):
+    iterable = iter(iterable)
+    active = collections.deque([], size)
+    for _ in range(size):
+        active.append(next(iterable))
+    cursum = fsum(active)
+    yield cursum
+    for x in iterable:
+        cursum += x - active.popleft()
+        active.append(x)
+        yield cursum
+
+def main():
+    args = get_args()
+    sizes = get_ma_sizes(args.sigma, args.passes)
+    in_seq = file_eval(sys.stdin)
+    seqs = [in_seq]
+    scale = 1
+    for size in sizes:
+        scale *= size
+        seqs.append(iter2mov_sum(seqs[-1], size))
+    for ov in seqs[-1]:
+        print(ov / scale)
+    return 0
+
+if __name__ == '__main__':
+    sys.exit(main())

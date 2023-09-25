@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+
+import sys
+import argparse
+import collections
+
+from calca_utils import *
+
+def get_delta(M, alpha, x0):
+    '''
+    Implements the algorithm given in Fornberg, Bengt (1988), "Generation of
+    Finite Differnece Formulas on Arbitrarily Spaced Grids", Mathematics of
+    Computation, 51 (184): 699-706, doi:10.1090/S0025-5718-1988-0935077-0, ISSN
+    0025-5718.
+
+    Return coeficient vector delta[(m, n, nu)].  Coeficients are indexed by
+    differentiation order m, accuracy n, and point index (into alpha) nu.
+    '''
+    N = len(alpha) - 1
+    delta = {}
+    delta[(0, 0, 0)] = 1.0
+    c1 = 1.0
+    for n in range(1, N + 1):
+        c2 = 1.0
+        for nu in range(n):
+            c3 = alpha[n] - alpha[nu]
+            c2 = c2 * c3
+            if n <= M:
+                delta[(n, n-1, nu)] = 0.0
+            for m in range(min(n, M) + 1):
+                q1 = alpha[n] - x0
+                if q1:
+                    q1 *= delta[(m, n-1, nu)] 
+                q2 = m
+                if q2:
+                    q2 *= delta[(m-1, n-1, nu)]
+                val = (q1 - q2)
+                if val:
+                    val /= c3
+                delta[(m, n, nu)] = val
+        for m in range(min(n, M) + 1):
+            q1 = m
+            if q1:
+                q1 *= delta[(m-1, n-1, n-1)] 
+            q2 = alpha[n-1] - x0
+            if q2:
+                q2 *= delta[(m, n-1, n-1)]
+            val = c1 * (q1 - q2)
+            if val:
+                val /= c2
+            delta[(m, n, n)] = val
+        c1 = c2
+    return delta
+
+def coefs(M, alpha, x0):
+    '''
+    Return only the coeficients from delta (see get_delta) of highest order
+    accuracy as a list.
+
+    sum([ lambda c, v: c * v for c, v in zip(coefs(M, xs, x0), ys) ])
+    will approximate d^M_y/dx^M at x0 given a list of x coordinates (xs) and the
+    y values at each of those x coordinates (ys).
+    '''
+    delta = get_delta(M, alpha, x0)
+    coefs = [0] * len(alpha)
+    accuracy = 0
+    for k in delta:
+        if k[1] > accuracy:
+            accuracy = k[1]
+    for k in delta:
+        if k[0] == M and k[1] == accuracy:
+            coefs[k[2]] = delta[k]
+    return coefs
+
+def centeral_equi(order, npts=None):
+    '''
+    Given a differentiation order, order, and optionally, a number of input
+    points, npts; returns a list of coeficients which can be used to approximate
+    the (order)th derivitave at the middle of the input data.  If npts is not
+    given, set it to it's minimum possible value.
+
+    The grid will be switched to half-integers if this improves the accuracy.
+    '''
+    if npts is None:
+        npts = order + 1
+    alpha = [ x - (npts - 1) / 2.0 for x in range(npts) ]
+    return coefs(order, alpha, 0.0)
+
+def get_args():
+    parser = argparse.ArgumentParser(
+        description='Read in a signal on stdin, write out the finite '
+        'difference approximation of the given order of that signal using the '
+        'specified number of points.  The input points are assumed to be '
+        'evenly spaced.'
+    )
+    parser.add_argument(
+        'order',
+        metavar='M',
+        type=int,
+        help='Approximates the Mth derivitave of the input points.'
+    )
+    parser.add_argument(
+        'npts',
+        metavar='N',
+        type=int,
+        nargs='?',
+        help='Uses N input points to approximate the finite difference value.  '
+        'Will output len(input) - N points of output.  Defaults to the minimum '
+        'possible value, (M - 1).'
+    )
+    parser.add_argument(
+        '--infile',
+        type=argparse.FileType('r'),
+        default=sys.stdin,
+        metavar='FILE',
+        help='Use FILE as the list of input points instead of stdin'
+    )
+    args = parser.parse_args()
+    if args.npts and args.npts <= args.order:
+        print('%s: differentian order must be strictly less than the number of '
+              'points consumed; %d <= %d' % (sys.argv[0], args.npts, args.order), 
+              file=sys.stderr)
+        raise ValueError
+    return args
+
+def mul(c, v):
+    return c * v
+
+def findiff(order, accuracy, inseq):
+    coefs = centeral_equi(order, accuracy)
+    inpts = collections.deque([], len(coefs))
+    for _ in range(len(coefs) - 1):
+        inpts.append(next(inseq))
+    for v in inseq:
+        inpts.append(v)
+        yield sum([ mul(c, v) for c, v in zip(coefs, inpts) ])
+
+def main():
+    try:
+        args = get_args()
+    except ValueError:
+        return -1
+    seq = file_eval(args.infile)
+    outseq = findiff(args.order, args.npts, seq)
+    for val in outseq:
+        print(val)
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+

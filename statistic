@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import sys
+from math import *
+from statistics import *
+
+import argparse
+
+from calca_utils import *
+
+def get_args():
+    parser = argparse.ArgumentParser(
+        description='Compute a summary statistic over data read from standard '
+        'input'
+    )
+    parser.add_argument(
+        'function',
+        metavar='F(X)',
+        help='The statistic to compute'
+    )
+    return parser.parse_args()
+
+
+def main():
+    args = get_args()
+    aggfile = sys.stdin
+    fun = eval(args.function)
+    # Setup the input
+    inseq = file_eval(sys.stdin)
+    val = fun(inseq)
+    writeval(val)
+    return 0
+
+if __name__ == '__main__':
+    sys.exit(main())

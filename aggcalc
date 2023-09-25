@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+from __future__ import print_function
+from __future__ import division
+from __future__ import unicode_literals
+
+import sys
+from math import *
+from operator import *
+
+import argparse
+
+from calca_utils import *
+
+op_to_fun = {
+    '+': add,
+    '/': truediv,
+    '//': floordiv,
+    '&': and_,
+    '^': xor,
+    '|': or_,
+    '**': pow,
+    'is': is_,
+    'is not': is_not,
+    '<<': lshift,
+    '%': mod,
+    '*': mul,
+    '>>': rshift,
+    '-': sub,
+    '<': lt,
+    '<=': le,
+    '==': eq,
+    '!=': ne,
+    '>=': ge,
+    '>': gt
+}
+
+def get_args():
+    parser = argparse.ArgumentParser(
+        description='Reduce the inputs to a single value by repeatedly '
+        'performing the same bivariate function on the result and the next '
+        'input. I.E. compute f(x_n, f(x_n-1, f(x_n-2, ... f(x_1, x_0)))).'
+    )
+    parser.add_argument(
+        'function',
+        metavar='F(accum, x_i)',
+        help='A two argument function or operation.'
+    )
+    parser.add_argument(
+        '--scale',
+        metavar='F(result, n)',
+        help='Apply this function to the accumulated result with the number of '
+        'inputs as its second argument before writing out the result'
+    )
+    parser.add_argument(
+        '--initial',
+        help='Use this to initialize the accumulator rather than the first '
+        'line of input'
+    )
+    return parser.parse_args()
+
+def funstr2fun(funstr):
+    # Get a function that takes two arguments.
+    # Accept either an operator or a lambda statement.
+    if funstr in op_to_fun:
+        fun = op_to_fun[funstr]
+    else:
+        fun = eval(funstr)
+    return fun
+
+def main():
+    args = get_args()
+    aggfile = sys.stdin
+    fun = funstr2fun(args.function)
+    # Setup the input
+    inseq = file_eval(sys.stdin)
+    # Determine the initial value.  This can be explicitly set, 
+    # or we can just take the first thing from stdin.
+    if args.initial:
+        val = eval(args.initial)
+    else:
+        val = next(inseq)
+    n = 0
+    for line in inseq:
+        val = fun(val, line)
+        n += 1
+    if args.scale:
+        scalefun = funstr2fun(args.scale)
+        val = scalefun(val, n)
+    writeval(val)
+    return 0
+
+if __name__ == '__main__':
+    sys.exit(main())
